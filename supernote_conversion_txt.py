@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 from datetime import datetime
+import json
 
 # Define the paths and variables
 supernote_parent_storage_path = "/Users/acbouwers/Library/Containers/5E209006-499F-43DC-BD7C-EC697B9B4D64/Data/Library/Application Support/com.ratta.supernote/677531935891181568"
@@ -49,7 +50,7 @@ def extract_text_from_note(note_file_path, text_output_path):
                 print(f"Text extracted successfully to {text_output_path}")
                 return True
             else:
-                print (f"Text extraction produced an empty file for {note_file_path}")
+                print(f"Text extraction produced an empty file for {note_file_path}")
                 return False
         else:
             print(f"Text output file was not created: {text_output_path}")
@@ -237,7 +238,7 @@ for note_file in note_files:
         if new_text.strip():
             append_new_text(existing_markdown_file, new_text)
             print(f"Updated text for {note_file_name_without_ext}")
-            print(new_text)  # Output the converted text recognition results using stdout
+            print(json.dumps({"text_recognition_results": new_text}))  # Output the converted text recognition results using JSON format
         else:
             print(f"Extracted text is empty for {note_file_name_without_ext}")
     else:
