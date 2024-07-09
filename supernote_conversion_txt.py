@@ -49,7 +49,7 @@ def extract_text_from_note(note_file_path, text_output_path):
                 print(f"Text extracted successfully to {text_output_path}")
                 return True
             else:
-                print(f"Text extraction produced an empty file for {note_file_path}")
+                print (f"Text extraction produced an empty file for {note_file_path}")
                 return False
         else:
             print(f"Text output file was not created: {text_output_path}")
@@ -87,17 +87,17 @@ def update_existing_markdown_file(file_path):
 def append_new_text(markdown_file, new_text):
     with open(markdown_file, 'r+', encoding='utf-8') as f:
         content = f.read()
-        insert_position = content.find("### Supernote Text Recognition Results")
-        if insert_position != -1:
+        start_position = content.find("### Supernote Text Recognition Results")
+        end_position = content.find("### SuperNote Exported Images")
+        if start_position != -1 and end_position != -1:
             new_content = (
-                content[:insert_position] +
-                "### Supernote Text Recognition Results\n\n" +
+                content[:start_position + len("### Supernote Text Recognition Results\n\n")] +
                 new_text + "\n\n" +
-                content[insert_position + len("### Supernote Text Recognition Results\n\n"):]
+                content[end_position:]
             )
         else:
-            # If the header doesn't exist, append to the end of the file
-            new_content = content + "\n\n### Supernote Text Recognition Results\n\n" + new_text
+            # If the headers don't exist, append to the end of the file
+            new_content = content + "\n\n### Supernote Text Recognition Results\n\n" + new_text + "\n\n### SuperNote Exported Images\n"
 
         f.seek(0)
         f.write(new_content)
@@ -127,6 +127,7 @@ def convert_note_to_images(note_file_path, output_folder, file_id):
         "convert",
         "--policy=loose",
         "-t", supernote_tool_image_conversion_type,
+        "-a",
         note_file_path,
         os.path.join(output_folder, f"{file_id}.{supernote_tool_image_conversion_type}")
     ]
@@ -143,6 +144,7 @@ def convert_note_to_images(note_file_path, output_folder, file_id):
                 generated_files.append(file)
 
         if generated_files:
+            generated_files.sort()  # Ensure the files are in the correct order
             print(f"Successfully created the following files: {', '.join(generated_files)}")
             return generated_files
         else:
@@ -162,8 +164,7 @@ def append_image_references(markdown_file, image_references):
         if insert_position != -1:
             new_content = (
                 content[:insert_position + len("### SuperNote Exported Images\n")] +
-                "\n".join(image_references) + "\n" +
-                content[insert_position + len("### SuperNote Exported Images\n"):]
+                "\n".join(image_references) + "\n"
             )
         else:
             # If the header doesn't exist, append to the end of the file
@@ -172,6 +173,23 @@ def append_image_references(markdown_file, image_references):
         f.seek(0)
         f.write(new_content)
         f.truncate()
+
+def sync_note_to_correct_folder(note_file, file_id, note_file_name_without_ext, note_created_date):
+    relative_path = os.path.relpath(note_file, supernote_path)
+    note_folder = os.path.dirname(relative_path)
+    note_folder_path = os.path.join(notes_application_storage_path, note_folder)
+
+    if not os.path.exists(note_folder_path):
+        os.makedirs(note_folder_path)
+
+    new_markdown_file_path = os.path.join(note_folder_path, f"{note_file_name_without_ext}{notes_application_file_ext}")
+
+    note_tags = note_folder.replace(" ", "").lower().replace("/", "/")
+    note_tags = re.sub(r'(\d+)\.(\d+)', r'\1/\2', note_tags)
+    formatted_note_created_date = note_created_date.strftime('%Y-%m-%d')
+
+    create_new_markdown_file(new_markdown_file_path, note_file_name_without_ext, note_tags, formatted_note_created_date)
+    return new_markdown_file_path
 
 # Main processing loop
 note_files = [os.path.join(root, file) for root, _, files in os.walk(supernote_path) for file in files if file.endswith('.note')]
@@ -185,23 +203,12 @@ for note_file in note_files:
         continue
 
     note_file_name_without_ext = os.path.splitext(os.path.basename(note_file))[0].strip()
-    note_full_path = note_file
+    note_created_date = datetime.fromtimestamp(os.path.getctime(note_file))
 
     existing_markdown_file = find_existing_markdown(file_id)
 
     if not existing_markdown_file:
-        new_markdown_file_path = os.path.join(notes_application_inbox_path, f"{note_file_name_without_ext}{notes_application_file_ext}")
-        note_directory_path = os.path.dirname(note_file).strip()
-
-        note_tags = note_directory_path.replace(supernote_parent_storage_path, "").strip("/").replace(" ", "").lower()
-        note_tags = note_tags.replace("/", "/")
-        note_tags = re.sub(r'(\d+)\.(\d+)', r'\1/\2', note_tags)
-
-        note_created_date = datetime.fromtimestamp(os.path.getctime(note_file))
-        formatted_note_created_date = note_created_date.strftime('%Y-%m-%d')
-
-        create_new_markdown_file(new_markdown_file_path, note_file_name_without_ext, note_tags, formatted_note_created_date)
-        existing_markdown_file = new_markdown_file_path
+        existing_markdown_file = sync_note_to_correct_folder(note_file, file_id, note_file_name_without_ext, note_created_date)
     else:
         update_existing_markdown_file(existing_markdown_file)
 
@@ -213,13 +220,13 @@ for note_file in note_files:
 
     # Extract text from .note file
     text_output_path = os.path.join(attachments_path, f"{file_id}_text.txt")
-    text_extracted = extract_text_from_note(note_full_path, text_output_path)
+    text_extracted = extract_text_from_note(note_file, text_output_path)
     if not text_extracted:
         # Retry text extraction
         print(f"Retrying text extraction for {note_file}")
-        text_extracted = extract_text_from_note(note_full_path, text_output_path)
+        text_extracted = extract_text_from_note(note_file, text_output_path)
         if not text_extracted:
-            error_message = f"This .note file was not created using the Real-Time Recognition file type, so no text was able to be output\n{note_full_path}"
+            error_message = f"This .note file was not created using the Real-Time Recognition file type, so no text was able to be output\n{note_file}"
             append_error_message(existing_markdown_file, error_message, "### Supernote Text Recognition Results")
             print(f"Failed to extract text from {note_file} after retrying")
             failed_conversions.append(note_file)
@@ -230,6 +237,7 @@ for note_file in note_files:
         if new_text.strip():
             append_new_text(existing_markdown_file, new_text)
             print(f"Updated text for {note_file_name_without_ext}")
+            print(new_text)  # Output the converted text recognition results using stdout
         else:
             print(f"Extracted text is empty for {note_file_name_without_ext}")
     else:
@@ -237,13 +245,13 @@ for note_file in note_files:
 
     # Convert the note file to images
     print(f"Attempting to convert {note_file} to {supernote_tool_image_conversion_type.upper()}")
-    generated_files = convert_note_to_images(note_full_path, attachments_path, file_id)
+    generated_files = convert_note_to_images(note_file, attachments_path, file_id)
     if not generated_files:
         # Retry image conversion
         print(f"Retrying image conversion for {note_file}")
-        generated_files = convert_note_to_images(note_full_path, attachments_path, file_id)
+        generated_files = convert_note_to_images(note_file, attachments_path, file_id)
         if not generated_files:
-            error_message = f"The .note file conversion to images failed for some reason. Error output: {note_full_path}"
+            error_message = f"The .note file conversion to images failed for some reason. Error output: {note_file}"
             append_error_message(existing_markdown_file, error_message, "### SuperNote Exported Images")
             print(f"Failed to convert {note_file} to {supernote_tool_image_conversion_type.upper()} after retrying")
             failed_conversions.append(note_file)
