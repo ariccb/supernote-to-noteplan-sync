@@ -123,31 +123,39 @@ def append_error_message(markdown_file, error_message, section):
         f.truncate()
 
 def convert_note_to_images(note_file_path, output_folder, file_id):
-    command = [
-        supernote_tool_path,
-        "convert",
-        "--policy=loose",
-        "-t", supernote_tool_image_conversion_type,
-        "-a",
-        note_file_path,
-        os.path.join(output_folder, f"{file_id}.{supernote_tool_image_conversion_type}")
-    ]
-
+    max_attempts = 100  # Set a reasonable maximum number of attempts to avoid infinite loops
     try:
-        print(f"Running command: {' '.join(command)}")
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
-        print(f"Command output: {result.stdout}")
+        generated_files = []
+        for page in range(max_attempts):
+            output_file_path = os.path.join(output_folder, f"{file_id}_{page}.{supernote_tool_image_conversion_type}")
+            command = [
+                supernote_tool_path,
+                "convert",
+                "--policy=loose",
+                "-t", supernote_tool_image_conversion_type,
+                "-a",
+                note_file_path,
+                output_file_path
+            ]
+            print(f"Running command: {' '.join(command)}")
+            result = subprocess.run(command, check=True, capture_output=True, text=True)
+            print(f"Command output: {result.stdout}")
+
+            if os.path.exists(output_file_path):
+                generated_files.append(output_file_path)
+            else:
+                break
 
         # Check for generated files
-        generated_files = []
+        final_generated_files = []
         for file in os.listdir(output_folder):
             if file.startswith(file_id) and file.endswith(f".{supernote_tool_image_conversion_type}"):
-                generated_files.append(file)
+                final_generated_files.append(file)
 
-        if generated_files:
-            generated_files.sort()  # Ensure the files are in the correct order
-            print(f"Successfully created the following files: {', '.join(generated_files)}")
-            return generated_files
+        if final_generated_files:
+            final_generated_files.sort()  # Ensure the files are in the correct order
+            print(f"Successfully created the following files: {', '.join(final_generated_files)}")
+            return final_generated_files
         else:
             print(f"Failed to create expected image files for {note_file_path}")
             return []
@@ -161,10 +169,10 @@ def convert_note_to_images(note_file_path, output_folder, file_id):
 def append_image_references(markdown_file, image_references):
     with open(markdown_file, 'r+', encoding='utf-8') as f:
         content = f.read()
-        insert_position = content.find("### SuperNote Exported Images")
-        if insert_position != -1:
+        start_position = content.find("### SuperNote Exported Images")
+        if start_position != -1:
             new_content = (
-                content[:insert_position + len("### SuperNote Exported Images\n")] +
+                content[:start_position + len("### SuperNote Exported Images\n")] +
                 "\n".join(image_references) + "\n"
             )
         else:
